@@ -1,0 +1,2677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>BeatOS: CPU Scheduling with Paint Bucket Interface</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 2px;
+    }
+
+    .container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2px;
+    }
+
+    .column {
+      flex: 1 1 48%;
+      min-width: 320px;
+    }
+
+    .algo-selector {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+
+    .algo-selector label {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background-color: #eee;
+      padding: 4px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .algo-selector input[type="radio"] {
+      accent-color: #4CAF50;
+    }
+
+    .gantt-chart {
+      margin: 10px;
+    }
+
+    .timeline {
+      display: flex;
+      flex-wrap: wrap;
+      margin-left: 100px;
+      width: 510px;
+    }
+
+    .timeline .time-cell {
+      width: 30px;
+      height: 20px;
+      text-align: center;
+      font-size: 12px;
+      line-height: 20px;
+    }
+
+    .task-row {
+      display: flex;
+      margin-bottom: 10px;
+    }
+
+    .task-label {
+      width: 100px;
+      text-align: right;
+      padding-right: 10px;
+      font-size: 14px;
+      line-height: 30px;
+    }
+
+    .task-grid {
+      display: flex;
+      flex-wrap: wrap;
+      width: 510px;
+    }
+
+    .cell {
+      width: 30px;
+      height: 30px;
+      border: 1px solid #999;
+      box-sizing: border-box;
+      background-color: white;
+      font-size: 14px;
+      text-align: center;
+      line-height: 30px;
+      color: #333;
+    }
+
+    .buttons {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin: 6px auto;
+      width: fit-content;
+    }
+
+    button {
+      padding: 6px 6px;
+      font-size: 14px;
+    }
+
+    .process-hint-section {
+      visibility: visible;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .hidden {
+      visibility: hidden;
+    }
+
+    .metrics-box {
+      margin-top: 2px;
+      margin-bottom: 3px;
+      font-size: 14px;
+      padding: 5px;
+      text-align: center;
+    }
+
+    /* legend for hint of 3 processes */
+    .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 20px;
+        justify-content: center;
+    }
+
+    .legend-item {
+        padding: 0 10px;
+        height: 30px;
+        border: 2px solid #444;
+        text-align: center;
+        line-height: 30px;
+        font-size: 14px;
+        color: #000;
+        font-weight: bold;
+        white-space: nowrap;
+    }
+
+    .status-not-initialized {
+        background-color: white;    }
+
+    .status-ready {
+        background-color: #b6fcb6; /* Light green */
+    }
+
+    .status-running {
+        background-color: #5cd65c; /* Medium green */
+    }
+
+    .status-blocked {
+        background-color: #2e8b57; /* Darker green */
+    }
+
+    /* paint bucket */
+
+    .paint-buckets {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .bucket {
+      width: 100px;
+      height: 30px;
+      text-align: center;
+      line-height: 30px;
+      font-weight: bold;
+      border: 2px solid #444;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+
+    .bucket.selected {
+      outline: 3px solid #000;
+    }
+
+    .bucket-p1 {
+      background-color: pink;
+    }
+
+    .bucket-p2 {
+      background-color: lightblue;
+    }
+
+    .bucket-p3 {
+      background-color: khaki;
+    }
+
+    .bucket-idle {
+      background-color: white;
+    }
+
+    #checkResult{
+      text-align:center;
+      font-weight:bold;
+      margin:2px;      
+    }
+
+    /* show question table */    
+    table, th, td {
+      border: 1px solid black;
+      border-collapse: collapse;
+      padding: 4px 6px;
+      font-size: 14px;
+      line-height: 1.2;
+      width: 100%;
+    }
+
+    td, th {
+      width: auto;
+    }
+
+    table {
+      table-layout: fixed;
+    }
+
+
+
+    /* Tooltip styles */
+    .tooltip-box {
+      position: absolute;
+      z-index: 9999;
+      background: #ffffff;
+      
+      padding: 8px 12px;
+      border-radius: 6px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      font-size: 14px;
+      max-width: 450px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s;
+      text-align: center;
+      white-space: pre-line;      
+    }
+    .tooltip-box.visible {
+      opacity: 1;
+      transition: opacity 0.25s;
+    }
+
+  </style>
+</head>
+<body>
+
+  <p id="description"></p>
+  <table id="cpuTable"></table>
+
+  <div class="container">
+    <!-- Left Column -->
+    <div class="column" id="leftColumn">
+      <h3>Paint Bucket (CPU Gantt Chart)</h3>
+      <div class="paint-buckets" id="paintBuckets">
+        <div class="bucket bucket-p1" data-label="P1">P1</div>
+        <div class="bucket bucket-p2" data-label="P2">P2</div>
+        <div class="bucket bucket-p3" data-label="P3">P3</div>
+        <div class="bucket bucket-idle" data-label="">Idle</div>
+      </div>
+
+      <div class="gantt-chart">
+        <div class="timeline" id="cpuTimelineLeft"></div>
+        <div class="task-row">
+          <div class="task-label">CPU</div>
+          <div class="task-grid" id="cpuGridLeft"></div>
+        </div>
+      </div>
+
+      <div class="algo-selector">
+        <label><input type="radio" name="algo" value="fcfs" checked> FCFS</label>
+        <label><input type="radio" name="algo" value="sjf"> SJF</label>
+        <label><input type="radio" name="algo" value="srtf"> SRTF</label>
+        <label><input type="radio" name="algo" value="rr"> RR</label>
+        <label><input type="radio" name="algo" value="np"> Priority (NP)</label>
+        <label><input type="radio" name="algo" value="pp"> Priority (P)</label>
+      </div>
+
+
+      <div class="buttons">
+        <button type="button" id="checkAnswerBtn">Check Answer</button>
+        <button type="button" id="toggleHintBtn">Hint</button>
+        <button type="button" id="showAnswerBtn">Show Answer</button>
+        <button type="button" id="resetPageBtn">New Question</button>
+      </div>
+
+      <p id="checkResult"></p>
+
+      <div id="metricsDisplay" class="metrics-box">
+        <strong>Average Waiting Time: </strong><span id="avgWait"></span><br>
+        <strong>Average Turnaround Time: </strong><span id="avgTurnaround"></span>
+      </div>
+
+      <div class="gantt-chart hidden" id="answerSection">
+        <div class="timeline" id="cpuTimelineRight"></div>
+        <div class="task-row">
+          <div class="task-label">CPU</div>
+          <div class="task-grid" id="cpuGridRight"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column -->
+    <div class="column">
+      <h3>Hints (Process Gantt Charts)</h3>
+
+      <div class="legend">
+        <div class="legend-item status-not-initialized">Not Arrived / Finished</div>
+        <div class="legend-item status-ready">Ready</div>
+        <div class="legend-item status-running">Running</div>
+        <div class="legend-item status-blocked">Blocked</div>
+      </div>
+
+      <div class="process-hint-section hidden" id="hintSection">
+        <div class="gantt-chart">
+          <div class="timeline"></div>
+          <div class="task-row">
+            <div class="task-label">P1</div>
+            <div class="task-grid"></div>
+          </div>
+        </div>
+        <div class="gantt-chart">
+          <div class="timeline"></div>
+          <div class="task-row">
+            <div class="task-label">P2</div>
+            <div class="task-grid"></div>
+          </div>
+        </div>
+        <div class="gantt-chart">
+          <div class="timeline"></div>
+          <div class="task-row">
+            <div class="task-label">P3</div>
+            <div class="task-grid"></div>
+        </div>
+      </div>
+    </div>
+    </div>
+  </div>
+
+  <script>
+
+    let selectedAlgo = 'fcfs'; // default   
+    
+
+    
+    const dictcpu = [
+  {
+    "Description": "Modified from 2006 S2 final exam questions.",
+    "type": "with_io",
+    "processes": [
+      {
+        "name": "P1",
+        "priority": 1,
+        "arrival_time": 0,
+        "cpu_burst_1": 6,
+        "io_burst_1": 4,
+        "cpu_burst_2": 6
+      },
+      {
+        "name": "P2",
+        "priority": 0,
+        "arrival_time": 4,
+        "cpu_burst_1": 5,
+        "io_burst_1": 9,
+        "cpu_burst_2": 3,
+        "io_burst_2": 6,
+        "cpu_burst_3": 5
+      },
+      {
+        "name": "P3",
+        "priority": 1,
+        "arrival_time": 8,
+        "cpu_burst_1": 6,
+        "io_burst_1": 2,
+        "cpu_burst_2": 6
+      }
+    ],
+    "answer_fcfs": {
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,blocked,blocked,blocked,blocked,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running,running,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,running,running,running,running,running",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running,running,running,running,running,running,blocked,blocked,ready,ready,ready,ready,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P2,P2,P2,P2,P2,P3,P3,P3,P3,P3,P3,P1,P1,P1,P1,P1,P1,P3,P3,P3,P3,P3,P3,P2,P2,P2,idle,idle,idle,idle,idle,idle,P2,P2,P2,P2,P2"
+    },
+    "answer_sjf": {
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,blocked,blocked,blocked,blocked,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running,running,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,ready,ready,ready,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,running,running,running,running,running",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running,running,running,running,running,running,blocked,blocked,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P2,P2,P2,P2,P2,P3,P3,P3,P3,P3,P3,P1,P1,P1,P1,P1,P1,P2,P2,P2,P3,P3,P3,P3,P3,P3,P2,P2,P2,P2,P2"
+    },
+    "answer_srtf": {
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,blocked,blocked,blocked,blocked,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running,running,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,ready,ready,ready,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,running,running,running,running,running",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running,running,running,running,running,running,blocked,blocked,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P2,P2,P2,P2,P2,P3,P3,P3,P3,P3,P3,P1,P1,P1,P1,P1,P1,P2,P2,P2,P3,P3,P3,P3,P3,P3,P2,P2,P2,P2,P2"
+    },
+    "answer_rr": {
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,blocked,blocked,blocked,blocked,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running,running,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,running,running,running,running,running",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running,running,running,running,running,running,blocked,blocked,ready,ready,ready,ready,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P2,P2,P2,P2,P2,P3,P3,P3,P3,P3,P3,P1,P1,P1,P1,P1,P1,P3,P3,P3,P3,P3,P3,P2,P2,P2,idle,idle,idle,idle,idle,idle,P2,P2,P2,P2,P2"
+    },
+    "answer_pp": {
+      "process_statuses": {
+        "P1": "running,running,running,running,ready,ready,ready,ready,ready,running,running,blocked,blocked,blocked,blocked,ready,ready,running,ready,ready,ready,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,running,running,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,running,running,running,running,running,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running,running,running,running,running,running,blocked,blocked,ready,ready,ready,ready,ready,ready,ready,running,ready,ready,ready,ready,ready,running,running,running,running,running"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P2,P2,P2,P2,P2,P1,P1,P3,P3,P3,P3,P3,P3,P1,P2,P2,P2,P1,P1,P1,P1,P1,P3,P2,P2,P2,P2,P2,P3,P3,P3,P3,P3"
+    },
+    "answer_np": {
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,blocked,blocked,blocked,blocked,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running,running,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,ready,ready,ready,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,running,running,running,running,running",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running,running,running,running,running,running,blocked,blocked,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P2,P2,P2,P2,P2,P3,P3,P3,P3,P3,P3,P1,P1,P1,P1,P1,P1,P2,P2,P2,P3,P3,P3,P3,P3,P3,P2,P2,P2,P2,P2"
+    }
+  },
+  {
+    "Description": "Modified from 2008 S2 final exam questions.",
+    "type": "with_io",
+    "processes": [
+      {
+        "name": "P1",
+        "priority": 1,
+        "arrival_time": 0,
+        "cpu_burst_1": 4,
+        "io_burst_1": 2,
+        "cpu_burst_2": 5,
+        "io_burst_2": 3,
+        "cpu_burst_3": 1
+      },
+      {
+        "name": "P2",
+        "priority": 0,
+        "arrival_time": 0,
+        "cpu_burst_1": 3,
+        "io_burst_1": 4,
+        "cpu_burst_2": 2,
+        "io_burst_2": 2,
+        "cpu_burst_3": 2
+      },
+      {
+        "name": "P3",
+        "priority": 1,
+        "arrival_time": 0,
+        "cpu_burst_1": 4,
+        "io_burst_1": 1,
+        "cpu_burst_2": 2,
+        "io_burst_2": 2,
+        "cpu_burst_3": 2
+      }
+    ],
+    "answer_fcfs": {
+      "process_statuses": {
+        "P1": "running,running,running,running,blocked,blocked,ready,ready,ready,ready,ready,running,running,running,running,running,blocked,blocked,blocked,ready,running,exited,exited,exited,exited",
+        "P2": "ready,ready,ready,ready,running,running,running,blocked,blocked,blocked,blocked,ready,ready,ready,ready,ready,running,running,blocked,blocked,ready,running,running,exited,exited",
+        "P3": "ready,ready,ready,ready,ready,ready,ready,running,running,running,running,blocked,ready,ready,ready,ready,ready,ready,running,running,blocked,blocked,ready,running,running"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P2,P2,P2,P3,P3,P3,P3,P1,P1,P1,P1,P1,P2,P2,P3,P3,P1,P2,P2,P3,P3"
+    },
+    "answer_sjf": {
+      "process_statuses": {
+        "P1": "ready,ready,ready,running,running,running,running,blocked,blocked,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,running,blocked,blocked,blocked,running",
+        "P2": "running,running,running,blocked,blocked,blocked,blocked,running,running,blocked,blocked,ready,ready,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,blocked,ready,running,running,blocked,blocked,ready,ready,ready,running,running,exited,exited"
+      },
+      "cpu_timeline": "P2,P2,P2,P1,P1,P1,P1,P2,P2,P3,P3,P3,P3,P2,P2,P3,P3,P1,P1,P1,P1,P1,P3,P3,idle,P1"
+    },
+    "answer_srtf": {
+      "process_statuses": {
+        "P1": "ready,ready,ready,running,running,running,running,blocked,blocked,ready,ready,ready,ready,ready,ready,ready,ready,running,running,ready,ready,running,running,running,blocked,blocked,blocked,running",
+        "P2": "running,running,running,blocked,blocked,blocked,blocked,running,running,blocked,blocked,ready,ready,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,blocked,ready,running,running,blocked,blocked,running,running,exited,exited,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P2,P2,P2,P1,P1,P1,P1,P2,P2,P3,P3,P3,P3,P2,P2,P3,P3,P1,P1,P3,P3,P1,P1,P1,idle,idle,idle,P1"
+    },
+    "answer_rr": {
+      "process_statuses": {
+        "P1": "ready,ready,ready,running,running,running,running,blocked,blocked,ready,ready,ready,ready,running,running,running,running,running,blocked,blocked,blocked,ready,running,exited,exited",
+        "P2": "running,running,running,blocked,blocked,blocked,blocked,ready,ready,ready,ready,running,running,blocked,blocked,ready,ready,ready,ready,ready,running,running,exited,exited,exited",
+        "P3": "ready,ready,ready,ready,ready,ready,ready,running,running,running,running,blocked,ready,ready,ready,ready,ready,ready,running,running,blocked,blocked,ready,running,running"
+      },
+      "cpu_timeline": "P2,P2,P2,P1,P1,P1,P1,P3,P3,P3,P3,P2,P2,P1,P1,P1,P1,P1,P3,P3,P2,P2,P1,P3,P3"
+    },
+    "answer_pp": {
+      "process_statuses": {
+        "P1": "ready,ready,ready,running,ready,running,ready,ready,ready,running,ready,ready,ready,running,blocked,blocked,running,ready,running,ready,running,running,running,blocked,blocked,blocked,running",
+        "P2": "running,running,running,blocked,blocked,blocked,blocked,running,running,blocked,blocked,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "ready,ready,ready,ready,running,ready,running,ready,ready,ready,running,ready,ready,ready,running,blocked,ready,running,ready,running,blocked,blocked,ready,running,running,exited,exited"
+      },
+      "cpu_timeline": "P2,P2,P2,P1,P3,P1,P3,P2,P2,P1,P3,P2,P2,P1,P3,idle,P1,P3,P1,P3,P1,P1,P1,P3,P3,idle,P1"
+    },
+    "answer_np": {
+      "process_statuses": {
+        "P1": "ready,ready,ready,running,running,running,running,blocked,blocked,ready,ready,ready,ready,ready,ready,running,running,running,running,running,blocked,blocked,blocked,running,exited,exited",
+        "P2": "running,running,running,blocked,blocked,blocked,blocked,running,running,blocked,blocked,ready,ready,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,blocked,ready,ready,ready,ready,ready,ready,running,running,blocked,blocked,running,running"
+      },
+      "cpu_timeline": "P2,P2,P2,P1,P1,P1,P1,P2,P2,P3,P3,P3,P3,P2,P2,P1,P1,P1,P1,P1,P3,P3,idle,P1,P3,P3"
+    }
+  },
+  {
+    "Description": "Modified from 2009 T1 final exam questions.",
+    "type": "with_io",
+    "processes": [
+      {
+        "name": "P1",
+        "priority": 1,
+        "arrival_time": 0,
+        "cpu_burst_1": 5,
+        "io_burst_1": 6,
+        "cpu_burst_2": 8
+      },
+      {
+        "name": "P2",
+        "priority": 0,
+        "arrival_time": 4,
+        "cpu_burst_1": 3,
+        "io_burst_1": 5,
+        "cpu_burst_2": 3
+      },
+      {
+        "name": "P3",
+        "priority": 2,
+        "arrival_time": 5,
+        "cpu_burst_1": 6,
+        "io_burst_1": 2,
+        "cpu_burst_2": 6
+      }
+    ],
+    "answer_fcfs": {
+      "process_statuses": {
+        "P1": "running,running,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,ready,ready,ready,running,running,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,running,blocked,blocked,blocked,blocked,blocked,ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running,running,running,running,running,running,blocked,blocked,ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P2,P2,P2,P3,P3,P3,P3,P3,P3,P1,P1,P1,P1,P1,P1,P1,P1,P2,P2,P2,P3,P3,P3,P3,P3,P3"
+    },
+    "answer_sjf": {
+      "process_statuses": {
+        "P1": "running,running,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running,running,running",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,running,blocked,blocked,blocked,blocked,blocked,ready,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running,running,running,running,running,running,blocked,blocked,ready,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P2,P2,P2,P3,P3,P3,P3,P3,P3,P2,P2,P2,P3,P3,P3,P3,P3,P3,P1,P1,P1,P1,P1,P1,P1,P1"
+    },
+    "answer_srtf": {
+      "process_statuses": {
+        "P1": "running,running,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running,running,running",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,running,blocked,blocked,blocked,blocked,blocked,ready,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running,running,running,running,running,running,blocked,blocked,ready,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P2,P2,P2,P3,P3,P3,P3,P3,P3,P2,P2,P2,P3,P3,P3,P3,P3,P3,P1,P1,P1,P1,P1,P1,P1,P1"
+    },
+    "answer_rr": {
+      "process_statuses": {
+        "P1": "running,running,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,ready,ready,ready,running,running,running,running,running,running,ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,running,blocked,blocked,blocked,blocked,blocked,ready,ready,ready,ready,ready,ready,ready,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running,running,running,running,running,running,blocked,blocked,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P2,P2,P2,P3,P3,P3,P3,P3,P3,P1,P1,P1,P1,P1,P1,P2,P2,P2,P3,P3,P3,P3,P3,P3,P1,P1"
+    },
+    "answer_pp": {
+      "process_statuses": {
+        "P1": "running,running,running,running,ready,ready,ready,running,blocked,blocked,blocked,blocked,blocked,blocked,ready,running,running,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,running,running,running,blocked,blocked,blocked,blocked,blocked,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running,running,running,running,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,blocked,blocked,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P2,P2,P2,P1,P3,P3,P3,P3,P2,P2,P2,P1,P1,P1,P1,P1,P1,P1,P1,P3,P3,idle,idle,P3,P3,P3,P3,P3,P3"
+    },
+    "answer_np": {
+      "process_statuses": {
+        "P1": "running,running,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,running,blocked,blocked,blocked,blocked,blocked,ready,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running,running,running,running,running,running,blocked,blocked,ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P2,P2,P2,P3,P3,P3,P3,P3,P3,P2,P2,P2,P1,P1,P1,P1,P1,P1,P1,P1,P3,P3,P3,P3,P3,P3"
+    }
+  },
+  {
+    "Description": "Modified from 2009 S2 final exam questions.",
+    "type": "without_io",
+    "processes": [
+      {
+        "name": "P1",
+        "arrival": 0,
+        "burst": 4,
+        "priority": 0
+      },
+      {
+        "name": "P2",
+        "arrival": 2,
+        "burst": 5,
+        "priority": 1
+      },
+      {
+        "name": "P3",
+        "arrival": 3,
+        "burst": 2,
+        "priority": 2
+      }
+    ],
+    "answer_fcfs": {
+      "avg_waiting": 2.67,
+      "avg_turnaround": 6.33,
+      "process_statuses": {
+        "P1": "running,running,running,running,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,ready,ready,running,running,running,running,running,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,running,running"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P2,P2,P2,P2,P2,P3,P3"
+    },
+    "answer_sjf": {
+      "avg_waiting": 1.67,
+      "avg_turnaround": 5.33,
+      "process_statuses": {
+        "P1": "running,running,running,running,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,ready,ready,ready,ready,running,running,running,running,running",
+        "P3": "not_arrived,not_arrived,not_arrived,ready,running,running,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P3,P3,P2,P2,P2,P2,P2"
+    },
+    "answer_srtf": {
+      "avg_waiting": 1.67,
+      "avg_turnaround": 5.33,
+      "process_statuses": {
+        "P1": "running,running,running,running,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,ready,ready,ready,ready,running,running,running,running,running",
+        "P3": "not_arrived,not_arrived,not_arrived,ready,running,running,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P3,P3,P2,P2,P2,P2,P2"
+    },
+    "answer_rr": {
+      "avg_waiting": 3.0,
+      "avg_turnaround": 6.67,
+      "process_statuses": {
+        "P1": "running,running,ready,ready,running,running,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,running,running,ready,ready,ready,ready,running,running,running",
+        "P3": "not_arrived,not_arrived,not_arrived,ready,ready,ready,running,running,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P2,P2,P1,P1,P3,P3,P2,P2,P2"
+    },
+    "answer_pp": {
+      "avg_waiting": 2.67,
+      "avg_turnaround": 6.33,
+      "process_statuses": {
+        "P1": "running,running,running,running,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,ready,ready,running,running,running,running,running,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,running,running"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P2,P2,P2,P2,P2,P3,P3"
+    },
+    "answer_np": {
+      "avg_waiting": 2.67,
+      "avg_turnaround": 6.33,
+      "process_statuses": {
+        "P1": "running,running,running,running,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,ready,ready,running,running,running,running,running,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,running,running"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P2,P2,P2,P2,P2,P3,P3"
+    }
+  },
+  {
+    "Description": "Modified from 2012 S2 final exam questions.",
+    "type": "with_io",
+    "processes": [
+      {
+        "name": "P1",
+        "priority": 1,
+        "arrival_time": 0,
+        "cpu_burst_1": 3,
+        "io_burst_1": 4,
+        "cpu_burst_2": 3
+      },
+      {
+        "name": "P2",
+        "priority": 1,
+        "arrival_time": 0,
+        "cpu_burst_1": 2,
+        "io_burst_1": 5,
+        "cpu_burst_2": 2,
+        "io_burst_2": 3,
+        "cpu_burst_3": 3
+      },
+      {
+        "name": "P3",
+        "priority": 1,
+        "arrival_time": 0,
+        "cpu_burst_1": 6,
+        "io_burst_1": 2,
+        "cpu_burst_2": 6
+      }
+    ],
+    "answer_fcfs": {
+      "process_statuses": {
+        "P1": "running,running,running,blocked,blocked,blocked,blocked,ready,ready,ready,ready,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "ready,ready,ready,running,running,blocked,blocked,blocked,blocked,blocked,ready,ready,ready,ready,running,running,blocked,blocked,blocked,ready,ready,ready,running,running,running",
+        "P3": "ready,ready,ready,ready,ready,running,running,running,running,running,running,blocked,blocked,ready,ready,ready,running,running,running,running,running,running,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P2,P2,P3,P3,P3,P3,P3,P3,P1,P1,P1,P2,P2,P3,P3,P3,P3,P3,P3,P2,P2,P2"
+    },
+    "answer_sjf": {
+      "process_statuses": {
+        "P1": "ready,ready,running,running,running,blocked,blocked,blocked,blocked,ready,ready,ready,ready,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "running,running,blocked,blocked,blocked,blocked,blocked,ready,ready,ready,ready,running,running,blocked,blocked,blocked,running,running,running,exited,exited,exited,exited,exited,exited",
+        "P3": "ready,ready,ready,ready,ready,running,running,running,running,running,running,blocked,blocked,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "P2,P2,P1,P1,P1,P3,P3,P3,P3,P3,P3,P2,P2,P1,P1,P1,P2,P2,P2,P3,P3,P3,P3,P3,P3"
+    },
+    "answer_srtf": {
+      "process_statuses": {
+        "P1": "ready,ready,running,running,running,blocked,blocked,blocked,blocked,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "running,running,blocked,blocked,blocked,blocked,blocked,running,running,blocked,blocked,blocked,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "ready,ready,ready,ready,ready,running,running,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,blocked,blocked,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "P2,P2,P1,P1,P1,P3,P3,P2,P2,P1,P1,P1,P2,P2,P2,P3,P3,P3,P3,idle,idle,P3,P3,P3,P3,P3,P3"
+    },
+    "answer_rr": {
+      "process_statuses": {
+        "P1": "running,running,running,blocked,blocked,blocked,blocked,ready,ready,ready,ready,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "ready,ready,ready,running,running,blocked,blocked,blocked,blocked,blocked,ready,ready,ready,ready,running,running,blocked,blocked,blocked,ready,ready,ready,running,running,running",
+        "P3": "ready,ready,ready,ready,ready,running,running,running,running,running,running,blocked,blocked,ready,ready,ready,running,running,running,running,running,running,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P2,P2,P3,P3,P3,P3,P3,P3,P1,P1,P1,P2,P2,P3,P3,P3,P3,P3,P3,P2,P2,P2"
+    },
+    "answer_pp": {
+      "process_statuses": {
+        "P1": "running,ready,ready,running,ready,ready,running,blocked,blocked,blocked,blocked,ready,ready,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "ready,running,ready,ready,running,blocked,blocked,blocked,blocked,blocked,ready,running,running,blocked,blocked,blocked,ready,ready,ready,ready,ready,ready,running,running,running",
+        "P3": "ready,ready,running,ready,ready,running,ready,running,running,running,running,blocked,blocked,ready,ready,ready,running,running,running,running,running,running,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P2,P3,P1,P2,P3,P1,P3,P3,P3,P3,P2,P2,P1,P1,P1,P3,P3,P3,P3,P3,P3,P2,P2,P2"
+    },
+    "answer_np": {
+      "process_statuses": {
+        "P1": "running,running,running,blocked,blocked,blocked,blocked,ready,ready,ready,ready,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "ready,ready,ready,running,running,blocked,blocked,blocked,blocked,blocked,ready,ready,ready,ready,running,running,blocked,blocked,blocked,ready,ready,ready,running,running,running",
+        "P3": "ready,ready,ready,ready,ready,running,running,running,running,running,running,blocked,blocked,ready,ready,ready,running,running,running,running,running,running,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P2,P2,P3,P3,P3,P3,P3,P3,P1,P1,P1,P2,P2,P3,P3,P3,P3,P3,P3,P2,P2,P2"
+    }
+  },
+  {
+    "Description": "Modified from 2014 S2 final exam questions.",
+    "type": "without_io",
+    "processes": [
+      {
+        "name": "P1",
+        "arrival": 0,
+        "burst": 6,
+        "priority": 1
+      },
+      {
+        "name": "P2",
+        "arrival": 1,
+        "burst": 4,
+        "priority": 2
+      },
+      {
+        "name": "P3",
+        "arrival": 4,
+        "burst": 6,
+        "priority": 4
+      }
+    ],
+    "answer_fcfs": {
+      "avg_waiting": 3.67,
+      "avg_turnaround": 9.0,
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,ready,ready,ready,ready,ready,running,running,running,running,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P2,P2,P2,P2,P3,P3,P3,P3,P3,P3"
+    },
+    "answer_sjf": {
+      "avg_waiting": 3.67,
+      "avg_turnaround": 9.0,
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,ready,ready,ready,ready,ready,running,running,running,running,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P2,P2,P2,P2,P3,P3,P3,P3,P3,P3"
+    },
+    "answer_srtf": {
+      "avg_waiting": 3.33,
+      "avg_turnaround": 8.67,
+      "process_statuses": {
+        "P1": "running,ready,ready,ready,ready,running,running,running,running,running,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "P1,P2,P2,P2,P2,P1,P1,P1,P1,P1,P3,P3,P3,P3,P3,P3"
+    },
+    "answer_rr": {
+      "avg_waiting": 5.67,
+      "avg_turnaround": 11.0,
+      "process_statuses": {
+        "P1": "running,running,ready,ready,running,running,ready,ready,ready,ready,running,running,exited,exited,exited,exited",
+        "P2": "not_arrived,ready,running,running,ready,ready,ready,ready,running,running,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running,running,ready,ready,ready,ready,running,running,running,running"
+      },
+      "cpu_timeline": "P1,P1,P2,P2,P1,P1,P3,P3,P2,P2,P1,P1,P3,P3,P3,P3"
+    },
+    "answer_pp": {
+      "avg_waiting": 3.67,
+      "avg_turnaround": 9.0,
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,ready,ready,ready,ready,ready,running,running,running,running,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P2,P2,P2,P2,P3,P3,P3,P3,P3,P3"
+    },
+    "answer_np": {
+      "avg_waiting": 3.67,
+      "avg_turnaround": 9.0,
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,ready,ready,ready,ready,ready,running,running,running,running,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P2,P2,P2,P2,P3,P3,P3,P3,P3,P3"
+    }
+  },
+  {
+    "Description": "Modified from 2017 S2 final exam questions.",
+    "type": "without_io",
+    "processes": [
+      {
+        "name": "P1",
+        "arrival": 0,
+        "burst": 6,
+        "priority": 4
+      },
+      {
+        "name": "P2",
+        "arrival": 2,
+        "burst": 3,
+        "priority": 2
+      },
+      {
+        "name": "P3",
+        "arrival": 4,
+        "burst": 6,
+        "priority": 1
+      }
+    ],
+    "answer_fcfs": {
+      "avg_waiting": 5.0,
+      "avg_turnaround": 10.0,
+      "process_statuses": {
+        "P1": "running,running,ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,running",
+        "P2": "not_arrived,not_arrived,running,running,ready,ready,ready,ready,ready,ready,running,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,running,running,running,running,running,running,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P2,P2,P3,P3,P3,P3,P3,P3,P2,P1,P1,P1,P1"
+    },
+    "answer_sjf": {
+      "avg_waiting": 3.0,
+      "avg_turnaround": 8.0,
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,ready,ready,ready,ready,running,running,running,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P2,P2,P2,P3,P3,P3,P3,P3,P3"
+    },
+    "answer_srtf": {
+      "avg_waiting": 2.67,
+      "avg_turnaround": 7.67,
+      "process_statuses": {
+        "P1": "running,running,ready,ready,ready,running,running,running,running,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "P1,P1,P2,P2,P2,P1,P1,P1,P1,P3,P3,P3,P3,P3,P3"
+    },
+    "answer_rr": {
+      "avg_waiting": 4.67,
+      "avg_turnaround": 9.67,
+      "process_statuses": {
+        "P1": "running,running,ready,ready,running,running,ready,ready,ready,running,running,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,running,running,ready,ready,ready,ready,running,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running,running,ready,ready,ready,running,running,running,running"
+      },
+      "cpu_timeline": "P1,P1,P2,P2,P1,P1,P3,P3,P2,P1,P1,P3,P3,P3,P3"
+    },
+    "answer_pp": {
+      "avg_waiting": 5.0,
+      "avg_turnaround": 10.0,
+      "process_statuses": {
+        "P1": "running,running,ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,running",
+        "P2": "not_arrived,not_arrived,running,running,ready,ready,ready,ready,ready,ready,running,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,running,running,running,running,running,running,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P2,P2,P3,P3,P3,P3,P3,P3,P2,P1,P1,P1,P1"
+    },
+    "answer_np": {
+      "avg_waiting": 4.0,
+      "avg_turnaround": 9.0,
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running,running,running,running,running,running,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P3,P3,P3,P3,P3,P3,P2,P2,P2"
+    }
+  },
+  {
+    "Description": "Modified from 2021 S2 final exam questions.",
+    "type": "without_io",
+    "processes": [
+      {
+        "name": "P1",
+        "arrival": 0,
+        "burst": 6,
+        "priority": 0
+      },
+      {
+        "name": "P2",
+        "arrival": 1,
+        "burst": 4,
+        "priority": 0
+      },
+      {
+        "name": "P3",
+        "arrival": 4,
+        "burst": 6,
+        "priority": 0
+      }
+    ],
+    "answer_fcfs": {
+      "avg_waiting": 3.67,
+      "avg_turnaround": 9.0,
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,ready,ready,ready,ready,ready,running,running,running,running,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P2,P2,P2,P2,P3,P3,P3,P3,P3,P3"
+    },
+    "answer_sjf": {
+      "avg_waiting": 3.67,
+      "avg_turnaround": 9.0,
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,ready,ready,ready,ready,ready,running,running,running,running,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P2,P2,P2,P2,P3,P3,P3,P3,P3,P3"
+    },
+    "answer_srtf": {
+      "avg_waiting": 3.33,
+      "avg_turnaround": 8.67,
+      "process_statuses": {
+        "P1": "running,ready,ready,ready,ready,running,running,running,running,running,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "P1,P2,P2,P2,P2,P1,P1,P1,P1,P1,P3,P3,P3,P3,P3,P3"
+    },
+    "answer_rr": {
+      "avg_waiting": 5.67,
+      "avg_turnaround": 11.0,
+      "process_statuses": {
+        "P1": "running,running,ready,ready,running,running,ready,ready,ready,ready,running,running,exited,exited,exited,exited",
+        "P2": "not_arrived,ready,running,running,ready,ready,ready,ready,running,running,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running,running,ready,ready,ready,ready,running,running,running,running"
+      },
+      "cpu_timeline": "P1,P1,P2,P2,P1,P1,P3,P3,P2,P2,P1,P1,P3,P3,P3,P3"
+    },
+    "answer_pp": {
+      "avg_waiting": 3.67,
+      "avg_turnaround": 9.0,
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,ready,ready,ready,ready,ready,running,running,running,running,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P2,P2,P2,P2,P3,P3,P3,P3,P3,P3"
+    },
+    "answer_np": {
+      "avg_waiting": 3.67,
+      "avg_turnaround": 9.0,
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,ready,ready,ready,ready,ready,running,running,running,running,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P2,P2,P2,P2,P3,P3,P3,P3,P3,P3"
+    }
+  },
+  {
+    "Description": "Modified from 2023 S2 final exam questions.",
+    "type": "without_io",
+    "processes": [
+      {
+        "name": "P3",
+        "arrival": 0,
+        "burst": 8,
+        "priority": 0
+      },
+      {
+        "name": "P2",
+        "arrival": 3,
+        "burst": 2,
+        "priority": 0
+      },
+      {
+        "name": "P1",
+        "arrival": 5,
+        "burst": 6,
+        "priority": 0
+      }
+    ],
+    "answer_fcfs": {
+      "avg_waiting": 3.33,
+      "avg_turnaround": 8.67,
+      "process_statuses": {
+        "P3": "running,running,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,running,running,exited,exited,exited,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "P3,P3,P3,P3,P3,P3,P3,P3,P2,P2,P1,P1,P1,P1,P1,P1"
+    },
+    "answer_sjf": {
+      "avg_waiting": 3.33,
+      "avg_turnaround": 8.67,
+      "process_statuses": {
+        "P3": "running,running,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,running,running,exited,exited,exited,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "P3,P3,P3,P3,P3,P3,P3,P3,P2,P2,P1,P1,P1,P1,P1,P1"
+    },
+    "answer_srtf": {
+      "avg_waiting": 2.33,
+      "avg_turnaround": 7.67,
+      "process_statuses": {
+        "P3": "running,running,running,ready,ready,running,running,running,running,running,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "P3,P3,P3,P2,P2,P3,P3,P3,P3,P3,P1,P1,P1,P1,P1,P1"
+    },
+    "answer_rr": {
+      "avg_waiting": 3.33,
+      "avg_turnaround": 8.67,
+      "process_statuses": {
+        "P3": "running,running,running,running,ready,ready,running,running,ready,ready,running,running,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,ready,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running,running,ready,ready,running,running,running,running"
+      },
+      "cpu_timeline": "P3,P3,P3,P3,P2,P2,P3,P3,P1,P1,P3,P3,P1,P1,P1,P1"
+    },
+    "answer_pp": {
+      "avg_waiting": 3.33,
+      "avg_turnaround": 8.67,
+      "process_statuses": {
+        "P3": "running,running,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,running,running,exited,exited,exited,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "P3,P3,P3,P3,P3,P3,P3,P3,P2,P2,P1,P1,P1,P1,P1,P1"
+    },
+    "answer_np": {
+      "avg_waiting": 3.33,
+      "avg_turnaround": 8.67,
+      "process_statuses": {
+        "P3": "running,running,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,running,running,exited,exited,exited,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "P3,P3,P3,P3,P3,P3,P3,P3,P2,P2,P1,P1,P1,P1,P1,P1"
+    }
+  },
+  {
+    "Description": "Modified from a previous version of the Supplementary Examination questions.",
+    "type": "without_io",
+    "processes": [
+      {
+        "name": "P1",
+        "arrival": 0,
+        "burst": 8,
+        "priority": 0
+      },
+      {
+        "name": "P2",
+        "arrival": 2,
+        "burst": 3,
+        "priority": 0
+      },
+      {
+        "name": "P3",
+        "arrival": 4,
+        "burst": 2,
+        "priority": 0
+      }
+    ],
+    "answer_fcfs": {
+      "avg_waiting": 4.33,
+      "avg_turnaround": 8.67,
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,running,running,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,running,running,running,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,ready,running,running"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P1,P1,P2,P2,P2,P3,P3"
+    },
+    "answer_sjf": {
+      "avg_waiting": 4.0,
+      "avg_turnaround": 8.33,
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,running,running,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,running,running,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P1,P1,P3,P3,P2,P2,P2"
+    },
+    "answer_srtf": {
+      "avg_waiting": 2.0,
+      "avg_turnaround": 6.33,
+      "process_statuses": {
+        "P1": "running,running,ready,ready,ready,ready,ready,running,running,running,running,running,running",
+        "P2": "not_arrived,not_arrived,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,exited,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P2,P2,P2,P3,P3,P1,P1,P1,P1,P1,P1"
+    },
+    "answer_rr": {
+      "avg_waiting": 3.67,
+      "avg_turnaround": 8.0,
+      "process_statuses": {
+        "P1": "running,running,ready,ready,running,running,ready,ready,ready,running,running,running,running",
+        "P2": "not_arrived,not_arrived,running,running,ready,ready,ready,ready,running,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running,running,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P2,P2,P1,P1,P3,P3,P2,P1,P1,P1,P1"
+    },
+    "answer_pp": {
+      "avg_waiting": 4.33,
+      "avg_turnaround": 8.67,
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,running,running,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,running,running,running,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,ready,running,running"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P1,P1,P2,P2,P2,P3,P3"
+    },
+    "answer_np": {
+      "avg_waiting": 4.33,
+      "avg_turnaround": 8.67,
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,running,running,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,running,running,running,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,ready,running,running"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P1,P1,P2,P2,P2,P3,P3"
+    }
+  },
+  {
+    "Description": "Modified from Question 4 of Workshop 1 (2024).",
+    "type": "with_io",
+    "processes": [
+      {
+        "name": "P1",
+        "priority": 1,
+        "arrival_time": 0,
+        "cpu_burst_1": 5,
+        "io_burst_1": 4,
+        "cpu_burst_2": 3
+      },
+      {
+        "name": "P2",
+        "priority": 0,
+        "arrival_time": 7,
+        "cpu_burst_1": 4,
+        "io_burst_1": 5,
+        "cpu_burst_2": 4,
+        "io_burst_2": 3,
+        "cpu_burst_3": 2
+      },
+      {
+        "name": "P3",
+        "priority": 2,
+        "arrival_time": 4,
+        "cpu_burst_1": 6,
+        "io_burst_1": 2,
+        "cpu_burst_2": 6
+      }
+    ],
+    "answer_np": {
+      "process_statuses": {
+        "P1": "running,running,running,running,running,blocked,blocked,blocked,blocked,ready,ready,ready,ready,ready,ready,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,running,running,running,running,blocked,blocked,blocked,blocked,blocked,ready,ready,ready,ready,running,running,running,running,blocked,blocked,blocked,running,running",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,running,running,running,running,blocked,blocked,ready,ready,ready,ready,ready,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P3,P3,P3,P3,P3,P3,P2,P2,P2,P2,P1,P1,P1,P3,P3,P3,P3,P3,P3,P2,P2,P2,P2,idle,idle,idle,P2,P2"
+    },
+    "answer_fcfs": {
+      "process_statuses": {
+        "P1": "running,running,running,running,running,blocked,blocked,blocked,blocked,ready,ready,ready,ready,ready,ready,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,running,running,running,running,blocked,blocked,blocked,blocked,blocked,ready,ready,ready,ready,running,running,running,running,blocked,blocked,blocked,running,running",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,running,running,running,running,blocked,blocked,ready,ready,ready,ready,ready,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P3,P3,P3,P3,P3,P3,P2,P2,P2,P2,P1,P1,P1,P3,P3,P3,P3,P3,P3,P2,P2,P2,P2,idle,idle,idle,P2,P2"
+    },
+    "answer_sjf": {
+      "process_statuses": {
+        "P1": "running,running,running,running,running,blocked,blocked,blocked,blocked,ready,ready,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,blocked,blocked,blocked,blocked,blocked,ready,running,running,running,running,blocked,blocked,blocked,running,running",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,running,running,running,running,blocked,blocked,ready,ready,ready,ready,ready,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P3,P3,P3,P3,P3,P3,P1,P1,P1,P2,P2,P2,P2,P3,P3,P3,P3,P3,P3,P2,P2,P2,P2,idle,idle,idle,P2,P2"
+    },
+    "answer_srtf": {
+      "process_statuses": {
+        "P1": "running,running,running,running,running,blocked,blocked,blocked,blocked,ready,ready,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,blocked,blocked,blocked,blocked,blocked,ready,running,running,running,running,blocked,blocked,blocked,running,running",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,running,running,running,running,blocked,blocked,ready,ready,ready,ready,ready,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P3,P3,P3,P3,P3,P3,P1,P1,P1,P2,P2,P2,P2,P3,P3,P3,P3,P3,P3,P2,P2,P2,P2,idle,idle,idle,P2,P2"
+    },
+    "answer_rr": {
+      "process_statuses": {
+        "P1": "running,running,running,running,running,blocked,blocked,blocked,blocked,ready,ready,ready,ready,ready,ready,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,running,running,running,running,blocked,blocked,blocked,blocked,blocked,ready,ready,ready,ready,running,running,running,running,blocked,blocked,blocked,running,running",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,running,running,running,running,blocked,blocked,ready,ready,ready,ready,ready,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P3,P3,P3,P3,P3,P3,P2,P2,P2,P2,P1,P1,P1,P3,P3,P3,P3,P3,P3,P2,P2,P2,P2,idle,idle,idle,P2,P2"
+    },
+    "answer_pp": {
+      "process_statuses": {
+        "P1": "running,running,running,running,running,blocked,blocked,blocked,blocked,ready,ready,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,running,running,running,blocked,blocked,blocked,blocked,blocked,running,running,running,running,blocked,blocked,blocked,running,running,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,ready,ready,ready,ready,ready,ready,ready,running,running,ready,ready,ready,ready,running,running,blocked,blocked,ready,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P3,P3,P2,P2,P2,P2,P1,P1,P1,P3,P3,P2,P2,P2,P2,P3,P3,idle,P2,P2,P3,P3,P3,P3,P3,P3"
+    }
+  },
+  {
+    "Description": "Randomly generated question.",
+    "type": "without_io",
+    "processes": [
+      {
+        "name": "P3",
+        "arrival": 1,
+        "burst": 2,
+        "priority": 5
+      },
+      {
+        "name": "P1",
+        "arrival": 5,
+        "burst": 1,
+        "priority": 0
+      },
+      {
+        "name": "P2",
+        "arrival": 5,
+        "burst": 3,
+        "priority": 1
+      }
+    ],
+    "answer_fcfs": {
+      "avg_waiting": 0.33,
+      "avg_turnaround": 2.33,
+      "process_statuses": {
+        "P3": "not_arrived,running,running,exited,exited,exited,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,running"
+      },
+      "cpu_timeline": "idle,P3,P3,idle,idle,P1,P2,P2,P2"
+    },
+    "answer_sjf": {
+      "avg_waiting": 0.33,
+      "avg_turnaround": 2.33,
+      "process_statuses": {
+        "P3": "not_arrived,not_arrived,running,running,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,running"
+      },
+      "cpu_timeline": "idle,P3,P3,idle,idle,P1,P2,P2,P2"
+    },
+    "answer_srtf": {
+      "avg_waiting": 0.33,
+      "avg_turnaround": 2.33,
+      "process_statuses": {
+        "P3": "not_arrived,running,running,exited,exited,exited,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,running"
+      },
+      "cpu_timeline": "idle,P3,P3,idle,idle,P1,P2,P2,P2"
+    },
+    "answer_rr": {
+      "avg_waiting": 0.33,
+      "avg_turnaround": 2.33,
+      "process_statuses": {
+        "P3": "not_arrived,running,running,exited,exited,exited,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,running"
+      },
+      "cpu_timeline": "idle,P3,P3,idle,idle,P1,P2,P2,P2"
+    },
+    "answer_pp": {
+      "avg_waiting": 0.33,
+      "avg_turnaround": 2.33,
+      "process_statuses": {
+        "P3": "not_arrived,running,running,exited,exited,exited,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,running"
+      },
+      "cpu_timeline": "idle,P3,P3,idle,idle,P1,P2,P2,P2"
+    },
+    "answer_np": {
+      "avg_waiting": 0.33,
+      "avg_turnaround": 2.33,
+      "process_statuses": {
+        "P3": "not_arrived,not_arrived,running,running,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,running"
+      },
+      "cpu_timeline": "idle,P3,P3,idle,idle,P1,P2,P2,P2"
+    }
+  },
+  {
+    "Description": "Randomly generated question.",
+    "type": "without_io",
+    "processes": [
+      {
+        "name": "P1",
+        "arrival": 0,
+        "burst": 6,
+        "priority": 5
+      },
+      {
+        "name": "P3",
+        "arrival": 3,
+        "burst": 1,
+        "priority": 0
+      },
+      {
+        "name": "P2",
+        "arrival": 4,
+        "burst": 1,
+        "priority": 4
+      }
+    ],
+    "answer_fcfs": {
+      "avg_waiting": 0.67,
+      "avg_turnaround": 3.33,
+      "process_statuses": {
+        "P1": "running,running,running,ready,ready,running,running,running",
+        "P3": "not_arrived,not_arrived,not_arrived,running,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,running,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P3,P2,P1,P1,P1"
+    },
+    "answer_sjf": {
+      "avg_waiting": 2.0,
+      "avg_turnaround": 4.67,
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,ready,ready,ready,running,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P3,P2"
+    },
+    "answer_srtf": {
+      "avg_waiting": 0.67,
+      "avg_turnaround": 3.33,
+      "process_statuses": {
+        "P1": "running,running,running,ready,ready,running,running,running",
+        "P3": "not_arrived,not_arrived,not_arrived,running,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,running,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P3,P2,P1,P1,P1"
+    },
+    "answer_rr": {
+      "avg_waiting": 1.33,
+      "avg_turnaround": 4.0,
+      "process_statuses": {
+        "P1": "running,running,running,running,ready,ready,running,running",
+        "P3": "not_arrived,not_arrived,not_arrived,ready,running,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,ready,running,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P3,P2,P1,P1"
+    },
+    "answer_pp": {
+      "avg_waiting": 0.67,
+      "avg_turnaround": 3.33,
+      "process_statuses": {
+        "P1": "running,running,running,ready,ready,running,running,running",
+        "P3": "not_arrived,not_arrived,not_arrived,running,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,running,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P3,P2,P1,P1,P1"
+    },
+    "answer_np": {
+      "avg_waiting": 2.0,
+      "avg_turnaround": 4.67,
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,ready,ready,ready,running,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P3,P2"
+    }
+  },
+  {
+    "Description": "Randomly generated question.",
+    "type": "without_io",
+    "processes": [
+      {
+        "name": "P1",
+        "arrival": 0,
+        "burst": 2,
+        "priority": 1
+      },
+      {
+        "name": "P2",
+        "arrival": 4,
+        "burst": 5,
+        "priority": 0
+      },
+      {
+        "name": "P3",
+        "arrival": 4,
+        "burst": 2,
+        "priority": 5
+      }
+    ],
+    "answer_fcfs": {
+      "avg_waiting": 1.67,
+      "avg_turnaround": 4.67,
+      "process_statuses": {
+        "P1": "running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,running,running,running,running,running,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,running,running"
+      },
+      "cpu_timeline": "P1,P1,idle,idle,P2,P2,P2,P2,P2,P3,P3"
+    },
+    "answer_sjf": {
+      "avg_waiting": 0.67,
+      "avg_turnaround": 3.67,
+      "process_statuses": {
+        "P1": "running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running,running,running,running,running",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,running,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,idle,idle,P3,P3,P2,P2,P2,P2,P2"
+    },
+    "answer_srtf": {
+      "avg_waiting": 0.67,
+      "avg_turnaround": 3.67,
+      "process_statuses": {
+        "P1": "running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running,running,running,running,running",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,running,running,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,idle,idle,P3,P3,P2,P2,P2,P2,P2"
+    },
+    "answer_rr": {
+      "avg_waiting": 1.33,
+      "avg_turnaround": 4.33,
+      "process_statuses": {
+        "P1": "running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,running,running,ready,ready,running,running,running",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running,running,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,idle,idle,P2,P2,P3,P3,P2,P2,P2"
+    },
+    "answer_pp": {
+      "avg_waiting": 1.67,
+      "avg_turnaround": 4.67,
+      "process_statuses": {
+        "P1": "running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,running,running,running,running,running,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,running,running"
+      },
+      "cpu_timeline": "P1,P1,idle,idle,P2,P2,P2,P2,P2,P3,P3"
+    },
+    "answer_np": {
+      "avg_waiting": 1.67,
+      "avg_turnaround": 4.67,
+      "process_statuses": {
+        "P1": "running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,running,running,running,running,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,running,running"
+      },
+      "cpu_timeline": "P1,P1,idle,idle,P2,P2,P2,P2,P2,P3,P3"
+    }
+  },
+  {
+    "Description": "Randomly generated question.",
+    "type": "without_io",
+    "processes": [
+      {
+        "name": "P2",
+        "arrival": 3,
+        "burst": 2,
+        "priority": 3
+      },
+      {
+        "name": "P3",
+        "arrival": 4,
+        "burst": 3,
+        "priority": 6
+      },
+      {
+        "name": "P1",
+        "arrival": 5,
+        "burst": 6,
+        "priority": 4
+      }
+    ],
+    "answer_fcfs": {
+      "avg_waiting": 2.33,
+      "avg_turnaround": 6.0,
+      "process_statuses": {
+        "P2": "not_arrived,not_arrived,not_arrived,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,ready,running,running,running",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,running,running,running,running,running,exited,exited,exited"
+      },
+      "cpu_timeline": "idle,idle,idle,P2,P2,P1,P1,P1,P1,P1,P1,P3,P3,P3"
+    },
+    "answer_sjf": {
+      "avg_waiting": 1.33,
+      "avg_turnaround": 5.0,
+      "process_statuses": {
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,running,exited,exited,exited,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "idle,idle,idle,P2,P2,P3,P3,P3,P1,P1,P1,P1,P1,P1"
+    },
+    "answer_srtf": {
+      "avg_waiting": 1.33,
+      "avg_turnaround": 5.0,
+      "process_statuses": {
+        "P2": "not_arrived,not_arrived,not_arrived,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,running,exited,exited,exited,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "idle,idle,idle,P2,P2,P3,P3,P3,P1,P1,P1,P1,P1,P1"
+    },
+    "answer_rr": {
+      "avg_waiting": 2.0,
+      "avg_turnaround": 5.67,
+      "process_statuses": {
+        "P2": "not_arrived,not_arrived,not_arrived,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,ready,ready,running,exited,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running,running,ready,running,running,running,running"
+      },
+      "cpu_timeline": "idle,idle,idle,P2,P2,P3,P3,P1,P1,P3,P1,P1,P1,P1"
+    },
+    "answer_pp": {
+      "avg_waiting": 2.33,
+      "avg_turnaround": 6.0,
+      "process_statuses": {
+        "P2": "not_arrived,not_arrived,not_arrived,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,ready,running,running,running",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,running,running,running,running,running,exited,exited,exited"
+      },
+      "cpu_timeline": "idle,idle,idle,P2,P2,P1,P1,P1,P1,P1,P1,P3,P3,P3"
+    },
+    "answer_np": {
+      "avg_waiting": 2.33,
+      "avg_turnaround": 6.0,
+      "process_statuses": {
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,ready,running,running,running",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,running,running,running,running,running,exited,exited,exited"
+      },
+      "cpu_timeline": "idle,idle,idle,P2,P2,P1,P1,P1,P1,P1,P1,P3,P3,P3"
+    }
+  },
+  {
+    "Description": "Randomly generated question.",
+    "type": "without_io",
+    "processes": [
+      {
+        "name": "P3",
+        "arrival": 3,
+        "burst": 3,
+        "priority": 2
+      },
+      {
+        "name": "P2",
+        "arrival": 6,
+        "burst": 2,
+        "priority": 5
+      },
+      {
+        "name": "P1",
+        "arrival": 6,
+        "burst": 1,
+        "priority": 6
+      }
+    ],
+    "answer_fcfs": {
+      "avg_waiting": 0.67,
+      "avg_turnaround": 2.67,
+      "process_statuses": {
+        "P3": "not_arrived,not_arrived,not_arrived,running,running,running,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,running,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running"
+      },
+      "cpu_timeline": "idle,idle,idle,P3,P3,P3,P2,P2,P1"
+    },
+    "answer_sjf": {
+      "avg_waiting": 0.33,
+      "avg_turnaround": 2.33,
+      "process_statuses": {
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,running,running,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,exited,exited"
+      },
+      "cpu_timeline": "idle,idle,idle,P3,P3,P3,P1,P2,P2"
+    },
+    "answer_srtf": {
+      "avg_waiting": 0.33,
+      "avg_turnaround": 2.33,
+      "process_statuses": {
+        "P3": "not_arrived,not_arrived,not_arrived,running,running,running,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,exited,exited"
+      },
+      "cpu_timeline": "idle,idle,idle,P3,P3,P3,P1,P2,P2"
+    },
+    "answer_rr": {
+      "avg_waiting": 0.67,
+      "avg_turnaround": 2.67,
+      "process_statuses": {
+        "P3": "not_arrived,not_arrived,not_arrived,running,running,running,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,running,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running"
+      },
+      "cpu_timeline": "idle,idle,idle,P3,P3,P3,P2,P2,P1"
+    },
+    "answer_pp": {
+      "avg_waiting": 0.67,
+      "avg_turnaround": 2.67,
+      "process_statuses": {
+        "P3": "not_arrived,not_arrived,not_arrived,running,running,running,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,running,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running"
+      },
+      "cpu_timeline": "idle,idle,idle,P3,P3,P3,P2,P2,P1"
+    },
+    "answer_np": {
+      "avg_waiting": 0.67,
+      "avg_turnaround": 2.67,
+      "process_statuses": {
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,running,running,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,running,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running"
+      },
+      "cpu_timeline": "idle,idle,idle,P3,P3,P3,P2,P2,P1"
+    }
+  },
+  {
+    "Description": "Randomly generated question.",
+    "type": "without_io",
+    "processes": [
+      {
+        "name": "P1",
+        "arrival": 1,
+        "burst": 2,
+        "priority": 6
+      },
+      {
+        "name": "P2",
+        "arrival": 2,
+        "burst": 1,
+        "priority": 0
+      },
+      {
+        "name": "P3",
+        "arrival": 3,
+        "burst": 1,
+        "priority": 2
+      }
+    ],
+    "answer_fcfs": {
+      "avg_waiting": 0.67,
+      "avg_turnaround": 2.0,
+      "process_statuses": {
+        "P1": "not_arrived,running,ready,ready,running",
+        "P2": "not_arrived,not_arrived,running,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,running,exited"
+      },
+      "cpu_timeline": "idle,P1,P2,P3,P1"
+    },
+    "answer_sjf": {
+      "avg_waiting": 0.67,
+      "avg_turnaround": 2.0,
+      "process_statuses": {
+        "P1": "not_arrived,not_arrived,running,running,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,ready,running,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,running"
+      },
+      "cpu_timeline": "idle,P1,P1,P2,P3"
+    },
+    "answer_srtf": {
+      "avg_waiting": 0.67,
+      "avg_turnaround": 2.0,
+      "process_statuses": {
+        "P1": "not_arrived,running,running,exited,exited",
+        "P2": "not_arrived,not_arrived,ready,running,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,ready,running"
+      },
+      "cpu_timeline": "idle,P1,P1,P2,P3"
+    },
+    "answer_rr": {
+      "avg_waiting": 0.67,
+      "avg_turnaround": 2.0,
+      "process_statuses": {
+        "P1": "not_arrived,running,running,exited,exited",
+        "P2": "not_arrived,not_arrived,ready,running,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,ready,running"
+      },
+      "cpu_timeline": "idle,P1,P1,P2,P3"
+    },
+    "answer_pp": {
+      "avg_waiting": 0.67,
+      "avg_turnaround": 2.0,
+      "process_statuses": {
+        "P1": "not_arrived,running,ready,ready,running",
+        "P2": "not_arrived,not_arrived,running,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,running,exited"
+      },
+      "cpu_timeline": "idle,P1,P2,P3,P1"
+    },
+    "answer_np": {
+      "avg_waiting": 0.67,
+      "avg_turnaround": 2.0,
+      "process_statuses": {
+        "P1": "not_arrived,not_arrived,running,running,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,ready,running,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,running"
+      },
+      "cpu_timeline": "idle,P1,P1,P2,P3"
+    }
+  },
+  {
+    "Description": "Randomly generated question.",
+    "type": "without_io",
+    "processes": [
+      {
+        "name": "P2",
+        "arrival": 2,
+        "burst": 1,
+        "priority": 5
+      },
+      {
+        "name": "P3",
+        "arrival": 3,
+        "burst": 5,
+        "priority": 0
+      },
+      {
+        "name": "P1",
+        "arrival": 6,
+        "burst": 3,
+        "priority": 4
+      }
+    ],
+    "answer_fcfs": {
+      "avg_waiting": 0.67,
+      "avg_turnaround": 3.67,
+      "process_statuses": {
+        "P2": "not_arrived,not_arrived,running,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,running,running,running,running,running,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running,running,running"
+      },
+      "cpu_timeline": "idle,idle,P2,P3,P3,P3,P3,P3,P1,P1,P1"
+    },
+    "answer_sjf": {
+      "avg_waiting": 0.67,
+      "avg_turnaround": 3.67,
+      "process_statuses": {
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,running,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,running,running,running,running,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running,running,running"
+      },
+      "cpu_timeline": "idle,idle,P2,P3,P3,P3,P3,P3,P1,P1,P1"
+    },
+    "answer_srtf": {
+      "avg_waiting": 0.67,
+      "avg_turnaround": 3.67,
+      "process_statuses": {
+        "P2": "not_arrived,not_arrived,running,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,running,running,running,running,running,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running,running,running"
+      },
+      "cpu_timeline": "idle,idle,P2,P3,P3,P3,P3,P3,P1,P1,P1"
+    },
+    "answer_rr": {
+      "avg_waiting": 1.33,
+      "avg_turnaround": 4.33,
+      "process_statuses": {
+        "P2": "not_arrived,not_arrived,running,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,running,running,running,running,ready,ready,running,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,ready,running"
+      },
+      "cpu_timeline": "idle,idle,P2,P3,P3,P3,P3,P1,P1,P3,P1"
+    },
+    "answer_pp": {
+      "avg_waiting": 0.67,
+      "avg_turnaround": 3.67,
+      "process_statuses": {
+        "P2": "not_arrived,not_arrived,running,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,running,running,running,running,running,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running,running,running"
+      },
+      "cpu_timeline": "idle,idle,P2,P3,P3,P3,P3,P3,P1,P1,P1"
+    },
+    "answer_np": {
+      "avg_waiting": 0.67,
+      "avg_turnaround": 3.67,
+      "process_statuses": {
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,running,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,running,running,running,running,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running,running,running"
+      },
+      "cpu_timeline": "idle,idle,P2,P3,P3,P3,P3,P3,P1,P1,P1"
+    }
+  },
+  {
+    "Description": "Randomly generated question.",
+    "type": "without_io",
+    "processes": [
+      {
+        "name": "P2",
+        "arrival": 2,
+        "burst": 6,
+        "priority": 4
+      },
+      {
+        "name": "P1",
+        "arrival": 3,
+        "burst": 1,
+        "priority": 4
+      },
+      {
+        "name": "P3",
+        "arrival": 6,
+        "burst": 3,
+        "priority": 4
+      }
+    ],
+    "answer_fcfs": {
+      "avg_waiting": 2.67,
+      "avg_turnaround": 6.0,
+      "process_statuses": {
+        "P2": "not_arrived,not_arrived,running,running,running,running,running,running,exited,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,running,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running,running,running"
+      },
+      "cpu_timeline": "idle,idle,P2,P2,P2,P2,P2,P2,P1,P3,P3,P3"
+    },
+    "answer_sjf": {
+      "avg_waiting": 2.67,
+      "avg_turnaround": 6.0,
+      "process_statuses": {
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,running,running,running,running,running,running,exited,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,running,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running,running,running"
+      },
+      "cpu_timeline": "idle,idle,P2,P2,P2,P2,P2,P2,P1,P3,P3,P3"
+    },
+    "answer_srtf": {
+      "avg_waiting": 1.33,
+      "avg_turnaround": 4.67,
+      "process_statuses": {
+        "P2": "not_arrived,not_arrived,running,ready,running,running,running,running,running,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,running,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running,running,running"
+      },
+      "cpu_timeline": "idle,idle,P2,P1,P2,P2,P2,P2,P2,P3,P3,P3"
+    },
+    "answer_rr": {
+      "avg_waiting": 2.33,
+      "avg_turnaround": 5.67,
+      "process_statuses": {
+        "P2": "not_arrived,not_arrived,running,running,ready,running,running,ready,ready,running,running,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,ready,running,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,ready,ready,running"
+      },
+      "cpu_timeline": "idle,idle,P2,P2,P1,P2,P2,P3,P3,P2,P2,P3"
+    },
+    "answer_pp": {
+      "avg_waiting": 2.67,
+      "avg_turnaround": 6.0,
+      "process_statuses": {
+        "P2": "not_arrived,not_arrived,running,running,running,running,running,running,exited,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,running,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running,running,running"
+      },
+      "cpu_timeline": "idle,idle,P2,P2,P2,P2,P2,P2,P1,P3,P3,P3"
+    },
+    "answer_np": {
+      "avg_waiting": 2.67,
+      "avg_turnaround": 6.0,
+      "process_statuses": {
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,running,running,running,running,running,running,exited,exited,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,running,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running,running,running"
+      },
+      "cpu_timeline": "idle,idle,P2,P2,P2,P2,P2,P2,P1,P3,P3,P3"
+    }
+  },
+  {
+    "Description": "Randomly generated question.",
+    "type": "without_io",
+    "processes": [
+      {
+        "name": "P2",
+        "arrival": 0,
+        "burst": 6,
+        "priority": 1
+      },
+      {
+        "name": "P1",
+        "arrival": 1,
+        "burst": 6,
+        "priority": 0
+      },
+      {
+        "name": "P3",
+        "arrival": 6,
+        "burst": 3,
+        "priority": 0
+      }
+    ],
+    "answer_fcfs": {
+      "avg_waiting": 3.33,
+      "avg_turnaround": 8.33,
+      "process_statuses": {
+        "P2": "running,ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,running",
+        "P1": "not_arrived,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,running,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P2,P1,P1,P1,P1,P1,P1,P3,P3,P3,P2,P2,P2,P2,P2"
+    },
+    "answer_sjf": {
+      "avg_waiting": 2.67,
+      "avg_turnaround": 7.67,
+      "process_statuses": {
+        "P2": "running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P1": "not_arrived,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,running,running,exited,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P2,P2,P2,P2,P2,P2,P3,P3,P3,P1,P1,P1,P1,P1,P1"
+    },
+    "answer_srtf": {
+      "avg_waiting": 2.67,
+      "avg_turnaround": 7.67,
+      "process_statuses": {
+        "P2": "running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P1": "not_arrived,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,running,running,exited,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P2,P2,P2,P2,P2,P2,P3,P3,P3,P1,P1,P1,P1,P1,P1"
+    },
+    "answer_rr": {
+      "avg_waiting": 6.33,
+      "avg_turnaround": 11.33,
+      "process_statuses": {
+        "P2": "running,running,ready,ready,running,running,ready,ready,ready,ready,running,running,exited,exited,exited",
+        "P1": "not_arrived,ready,running,running,ready,ready,running,running,ready,ready,ready,ready,running,running,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running,running,ready,ready,ready,ready,running"
+      },
+      "cpu_timeline": "P2,P2,P1,P1,P2,P2,P1,P1,P3,P3,P2,P2,P1,P1,P3"
+    },
+    "answer_pp": {
+      "avg_waiting": 3.33,
+      "avg_turnaround": 8.33,
+      "process_statuses": {
+        "P2": "running,ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,running",
+        "P1": "not_arrived,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,running,running,running,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P2,P1,P1,P1,P1,P1,P1,P3,P3,P3,P2,P2,P2,P2,P2"
+    },
+    "answer_np": {
+      "avg_waiting": 3.67,
+      "avg_turnaround": 8.67,
+      "process_statuses": {
+        "P2": "running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P1": "not_arrived,ready,ready,ready,ready,ready,running,running,running,running,running,running,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,running,running,running"
+      },
+      "cpu_timeline": "P2,P2,P2,P2,P2,P2,P1,P1,P1,P1,P1,P1,P3,P3,P3"
+    }
+  },
+  {
+    "Description": "Randomly generated question.",
+    "type": "without_io",
+    "processes": [
+      {
+        "name": "P2",
+        "arrival": 0,
+        "burst": 4,
+        "priority": 2
+      },
+      {
+        "name": "P3",
+        "arrival": 3,
+        "burst": 6,
+        "priority": 6
+      },
+      {
+        "name": "P1",
+        "arrival": 6,
+        "burst": 2,
+        "priority": 6
+      }
+    ],
+    "answer_fcfs": {
+      "avg_waiting": 1.67,
+      "avg_turnaround": 5.67,
+      "process_statuses": {
+        "P2": "running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,ready,running,running,running,running,running,running,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,running,running"
+      },
+      "cpu_timeline": "P2,P2,P2,P2,P3,P3,P3,P3,P3,P3,P1,P1"
+    },
+    "answer_sjf": {
+      "avg_waiting": 1.67,
+      "avg_turnaround": 5.67,
+      "process_statuses": {
+        "P2": "running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,ready,running,running,running,running,running,running,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,running,running"
+      },
+      "cpu_timeline": "P2,P2,P2,P2,P3,P3,P3,P3,P3,P3,P1,P1"
+    },
+    "answer_srtf": {
+      "avg_waiting": 1.0,
+      "avg_turnaround": 5.0,
+      "process_statuses": {
+        "P2": "running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,ready,running,running,ready,ready,running,running,running,running",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,running,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P2,P2,P2,P2,P3,P3,P1,P1,P3,P3,P3,P3"
+    },
+    "answer_rr": {
+      "avg_waiting": 1.0,
+      "avg_turnaround": 5.0,
+      "process_statuses": {
+        "P2": "running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,ready,running,running,ready,ready,running,running,running,running",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,running,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P2,P2,P2,P2,P3,P3,P1,P1,P3,P3,P3,P3"
+    },
+    "answer_pp": {
+      "avg_waiting": 1.67,
+      "avg_turnaround": 5.67,
+      "process_statuses": {
+        "P2": "running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,ready,running,running,running,running,running,running,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,running,running"
+      },
+      "cpu_timeline": "P2,P2,P2,P2,P3,P3,P3,P3,P3,P3,P1,P1"
+    },
+    "answer_np": {
+      "avg_waiting": 1.67,
+      "avg_turnaround": 5.67,
+      "process_statuses": {
+        "P2": "running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,ready,running,running,running,running,running,running,exited,exited",
+        "P1": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,running,running"
+      },
+      "cpu_timeline": "P2,P2,P2,P2,P3,P3,P3,P3,P3,P3,P1,P1"
+    }
+  },
+  {
+    "Description": "Modified from Question 4 of Workshop 1 (2024).",
+    "type": "with_io",
+    "processes": [
+      {
+        "name": "P1",
+        "priority": 1,
+        "arrival_time": 0,
+        "cpu_burst_1": 10,
+        "io_burst_1": 4,
+        "cpu_burst_2": 9
+      },
+      {
+        "name": "P2",
+        "priority": 0,
+        "arrival_time": 7,
+        "cpu_burst_1": 4,
+        "io_burst_1": 10,
+        "cpu_burst_2": 4,
+        "io_burst_2": 9,
+        "cpu_burst_3": 1
+      },
+      {
+        "name": "P3",
+        "priority": 2,
+        "arrival_time": 4,
+        "cpu_burst_1": 6,
+        "io_burst_1": 2,
+        "cpu_burst_2": 6
+      }
+    ],
+    "answer_np": {
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,running,running,running,running,blocked,blocked,blocked,blocked,running,running,running,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,ready,ready,ready,ready,ready,running,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,running",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running,blocked,blocked,ready,ready,running,running,running,running,running,running,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P1,P1,P1,P1,P2,P2,P2,P2,P1,P1,P1,P1,P1,P1,P1,P1,P1,P3,P3,P3,P3,P3,P3,P2,P2,P2,P2,P3,P3,P3,P3,P3,P3,idle,idle,idle,P2"
+    },
+    "answer_rr": {
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,ready,ready,ready,ready,ready,ready,running,running,running,running,blocked,blocked,blocked,blocked,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running,ready,ready,ready,ready,running,running,running,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,ready,ready,running,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,running",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,running,running,running,running,running,running,blocked,blocked,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P3,P3,P3,P3,P3,P3,P1,P1,P1,P1,P2,P2,P2,P2,P3,P3,P3,P3,P3,P3,P1,P1,P1,P1,P1,P1,P2,P2,P2,P2,P1,P1,P1,idle,idle,idle,idle,idle,idle,P2"
+    },
+    "answer_fcfs": {
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,running,running,running,running,blocked,blocked,blocked,blocked,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,ready,ready,ready,ready,ready,running,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,running",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running,blocked,blocked,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P1,P1,P1,P1,P3,P3,P3,P3,P3,P3,P2,P2,P2,P2,P1,P1,P1,P1,P1,P1,P1,P1,P1,P3,P3,P3,P3,P3,P3,P2,P2,P2,P2,idle,idle,idle,idle,idle,idle,idle,idle,idle,P2"
+    },
+    "answer_sjf": {
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,running,running,running,running,blocked,blocked,blocked,blocked,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,ready,ready,ready,ready,ready,running,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,running",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running,blocked,blocked,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P1,P1,P1,P1,P2,P2,P2,P2,P3,P3,P3,P3,P3,P3,P1,P1,P1,P1,P1,P1,P1,P1,P1,P2,P2,P2,P2,P3,P3,P3,P3,P3,P3,idle,idle,idle,P2"
+    },
+    "answer_srtf": {
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,running,running,running,running,blocked,blocked,blocked,blocked,ready,ready,ready,ready,ready,ready,running,running,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running,running,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,running,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,ready,ready,ready,ready,running,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,running",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,running,running,blocked,blocked,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P1,P1,P1,P1,P2,P2,P2,P2,P3,P3,P3,P3,P3,P3,P1,P1,P3,P3,P3,P3,P3,P3,P2,P2,P2,P2,P1,P1,P1,P1,P1,P1,P1,idle,idle,P2"
+    },
+    "answer_pp": {
+      "process_statuses": {
+        "P1": "running,running,running,running,running,running,running,ready,ready,ready,ready,running,running,running,blocked,blocked,blocked,blocked,running,running,running,ready,ready,ready,ready,running,running,running,running,running,running,exited,exited,exited,exited,exited,exited,exited,exited,exited,exited",
+        "P2": "not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,not_arrived,running,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,running,running,running,running,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,blocked,running,exited,exited,exited,exited,exited,exited",
+        "P3": "not_arrived,not_arrived,not_arrived,not_arrived,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,running,running,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,ready,running,running,blocked,blocked,running,running,running,running,running,running"
+      },
+      "cpu_timeline": "P1,P1,P1,P1,P1,P1,P1,P2,P2,P2,P2,P1,P1,P1,P3,P3,P3,P3,P1,P1,P1,P2,P2,P2,P2,P1,P1,P1,P1,P1,P1,P3,P3,idle,P2,P3,P3,P3,P3,P3,P3"
+    }
+  }
+];
+
+    
+    // Tooltip class: attach, show, hide, move
+    class Tooltip {
+      constructor() {
+        this.tooltip = document.createElement('div');
+        this.tooltip.className = 'tooltip-box';
+        document.body.appendChild(this.tooltip);
+        this.visible = false;
+      }
+
+      show(html, event) {
+        this.tooltip.innerHTML = html;
+        this.tooltip.classList.add('visible');
+        this.visible = true;
+        this.move(event);
+      }
+
+      hide() {
+        this.tooltip.classList.remove('visible');
+        this.visible = false;
+      }
+
+      move(event) {
+        if (!this.visible) return;
+        // Adjust offset as needed
+        const offsetX = 1, offsetY = 12;
+        let x = event.clientX + offsetX;
+        let y = event.clientY + offsetY;
+        // Prevent overflow
+        if (x + this.tooltip.offsetWidth > window.innerWidth) {
+          x = window.innerWidth - this.tooltip.offsetWidth - 10;
+        }
+        if (y + this.tooltip.offsetHeight > window.innerHeight) {
+          y = event.clientY - this.tooltip.offsetHeight - 10;
+        }
+        this.tooltip.style.left = x + 'px';
+        this.tooltip.style.top = y + 'px';
+      }
+    }
+
+    // Only one tooltip needed globally
+    const tooltip = new Tooltip();
+
+
+    // Define tooltip content for each element/class
+    const tooltipContent = {
+      // --- Paint Buckets ---
+      'bucket-p1': `This is the paint bucket for <b>Process 1</b>, and it's pink.<br>
+    If the CPU is running P1 at a certain time, click this bucket, then click on the timeline cells (each is 1 ms) to paint them.<br>
+    Don't worry if you make a mistake — you can recolor the cells as many times as you want, and the color won't get messy!<br>
+    Click <b>Check Answer</b> when you're done to see if you got it right.`,
+
+      'bucket-p2': `This is the paint bucket for <b>Process 2</b>, and it's light blue.<br>
+    If the CPU is running P2 at a certain time, click this bucket, then click on the timeline cells (each is 1 ms) to paint them.<br>
+    Don't worry if you make a mistake — you can recolor the cells as many times as you want, and the color won't get messy!<br>
+    Click <b>Check Answer</b> when you're done to see if you got it right.`,
+
+      'bucket-p3': `This is the paint bucket for <b>Process 3</b>, and it's khaki.<br>
+    If the CPU is running P3 at a certain time, click this bucket, then click on the timeline cells (each is 1 ms) to paint them.<br>
+    Don't worry if you make a mistake — you can recolor the cells as many times as you want, and the color won't get messy!<br>
+    Click <b>Check Answer</b> when you're done to see if you got it right.`,
+
+      'bucket-idle': `This is the default paint bucket, and it's white.<br>
+    It means the CPU is <b>not running any process</b> at that time.<br>
+    Use this if you accidentally colored a cell and want to erase it.<br>
+    You don't need to paint a cell white before coloring it from, say, P2 to P1 — just click the new color directly.`,
+
+      // --- Algo Radios ---
+      'algo-fcfs': `<b>Preemptive:</b> No<br>
+    Processes are executed in the order they arrive. The first to arrive is the first to complete.<br>
+    ❌ Can cause the <b>convoy effect</b>, where short jobs wait behind long ones.<br>
+    💡 Hint: Easy to understand and implement; think of it as a queue — no interruptions once a process starts.<br>
+    💡 Bonus: There’s <b>no preemptive version of FCFS</b> — think about why!`,
+
+      'algo-sjf': `<b>Preemptive:</b> No<br>
+    Always selects the process with the <b>shortest total CPU burst</b> among the ready ones.<br>
+    ❌ May cause <b>starvation</b> if short jobs keep arriving, delaying long ones indefinitely.<br>
+    💡 Hint: Assumes perfect burst time knowledge; gives best turnaround time in theory.<br>
+    💡 Bonus: This is the <b>non-preemptive SJF</b> — we don’t always say “non-preemptive,” but it’s what you’re using.`,
+
+      'algo-srtf': `<b>Preemptive:</b> Yes<br>
+    Chooses the process with the <b>shortest remaining CPU time</b>, even if it means interrupting the current one.<br>
+    ❌ Risk of <b>starvation</b> for longer jobs, and <b>high context-switch overhead</b>.<br>
+    💡 Hint: Most optimal for average waiting time — but sensitive to burst estimation.<br>
+    💡 Bonus: If you thought <b>SJF is non-preemptive</b> and wondered what “PSJF” is — <b>this is it!</b>`,
+
+      'algo-rr': `<b>Preemptive:</b> Yes<br>
+    Each process gets a fixed <b>time slice (quantum)</b> in turn; the CPU rotates through all ready processes.<br>
+    ❌ Performance depends on <b>quantum length</b> — too short means overhead, too long mimics FCFS.<br>
+    💡 Hint: Prioritizes fairness and response time — used in time-sharing systems.<br>
+    💡 Bonus: When choosing the <b>next ready process</b>, it actually uses <b>FCFS</b> under the hood.<br>
+    💡 Extra: In this application, <b>quantum is set to 2 for questions without I/O</b>, and <b>6 for those with I/O</b> — longer values save your brain (and context switches)!`,
+
+      'algo-np': `<b>Preemptive:</b> No<br>
+    Selects the <b>highest-priority process</b> to run next; it finishes uninterrupted.<br>
+    ❌ <b>Starvation</b> is possible if low-priority processes never get picked.<br>
+    💡 Hint: Priorities are fixed; new high-priority arrivals <b>don’t interrupt</b> current execution.<br>
+    💡 Extra: Unlike FCFS/SJF/RR, this algorithm does use the priority field directly. The ones on the left? They ignore it entirely — or only use it as a tie-breaker if needed.`,
+
+      'algo-pp': `<b>Preemptive:</b> Yes<br>
+    Always runs the <b>highest-priority process</b> available — <b>interrupts</b> if something more urgent arrives.<br>
+    ❌ High <b>starvation</b> risk for low-priority jobs; <b>frequent preemptions</b> can hurt performance.<br>
+    💡 Hint: Perfect for real-time or responsive systems.<br>
+    💡 Bonus: On this site (and in real Linux-style OSes), <b>lower numbers mean higher priority</b> — don’t get confused!<br>
+    💡 Extra: Don’t mix this “P” with <b>P ≠ NP</b> from algorithm complexity — it’s a different "P"!`,
+
+      // --- Buttons ---
+      'checkAnswerBtn': `📌 <b>Try this first!</b><br>
+    Checks if your painted CPU timeline matches the expected answer.<br>
+    ✅ Highlights the first mistake so you can rethink it.<br>
+    💡 Hint: For beginners, checking often is better than guessing blindly. But remember, you won’t have this button in the final exam.`,
+
+      'toggleHintBtn': `🧠 <b>Need a nudge?</b><br>
+    Reveals the status changes (Ready, Running, etc.) of each process over time.<br>
+    ⚠️ You still need to solve the CPU timeline yourself, though the hint gives strong clues.<br>
+    💡 Hint: Copying teaches nothing. Think through what the hint shows and why.`,
+
+      'showAnswerBtn': `🚨 <b>Full solution — use only if stuck!</b><br>
+    Reveals the correct CPU timeline and, for non-I/O questions, the average waiting and turnaround times.<br>
+    ⚠️ Once revealed, you can't unsee the answer.<br>
+    💡 Hint: Try <b>Check Answer</b> and <b>Hint</b> before using this.`,
+
+      'resetPageBtn': `♻️ <b>Load a new random question.</b><br>
+    Replaces the current problem and erases all your work.<br>
+    ⚠️ Try different algorithms on the same question before switching.<br>
+    💡 Hint: It’s fine to start with simpler, non-I/O questions. But in the real exam, you can't ask for a new one.`,
+
+      // --- Legend Items ---
+      'status-not-initialized': `The process has either <b>not arrived yet</b> or has already <b>finished execution</b>.<br>
+    This is the <b>default color</b> for all cells unless otherwise painted.`,
+
+      'status-ready': `The process is <b>waiting in the ready queue</b>, eligible to be scheduled on the CPU.<br>
+    Some textbooks distinguish between the <b>waiting queue</b> (e.g., I/O wait) and the <b>ready queue</b>, but here we <b>ignore the time</b> a process may spend waiting <i>before</i> entering the ready queue.<br>
+    In <b>non-preemptive</b> policies, the process stays in the ready queue until selected and then runs to completion.<br>
+    In <b>preemptive</b> policies, a running process may be <b>descheduled</b> (i.e., <b>interrupted</b>, such as when its time slice expires or it is preempted by a higher-priority process) and placed into the ready queue.`,
+
+      'status-running': `The process is currently <b>executing on the CPU</b>.<br>
+    In <b>non-preemptive</b> mode, it continues until it finishes or blocks.<br>
+    In <b>preemptive</b> mode, it can be <b>interrupted</b> by a higher-priority process or a <b>time slice expiration</b>.`,
+
+      'status-blocked': `The process is <b>waiting for I/O</b> in our questions (though it could also be sleeping or waiting on a signal).<br>
+    For simplicity, assume that <b>I/O burst time remains fixed</b>, even if multiple processes use the disk simultaneously.<br>
+    This isn’t strictly realistic, but it's based on how the model answer is calculated.<br>
+    Blocked processes <b>can’t be scheduled</b> until their event finishes.<br>
+    After that, the process becomes ready again and re-enters the ready queue.`,
+
+
+      'metrics-box': `This is the average time from <b>process arrival to its completion</b>.<br>
+    Calculated as: <b>Turnaround Time = Completion Time − Arrival Time</b><br>
+    It reflects the total time a process takes, including waiting, running, and I/O if applicable.`
+
+    };   
+
+    
+
+    // Randomly select one question from dictcpu
+    const selected = dictcpu[Math.floor(Math.random() * dictcpu.length)];
+
+    // Show description
+    document.getElementById("description").textContent = selected.Description;
+
+    const table = document.getElementById("cpuTable");
+    table.innerHTML = ""; // clear existing table
+
+    if (selected.type === "with_io") {
+      const columns = [
+        "name", 
+        "priority", 
+        "arrival_time", 
+        "cpu_burst_1", 
+        "io_burst_1", 
+        "cpu_burst_2", 
+        "io_burst_2", 
+        "cpu_burst_3"
+      ];
+
+      const columnHeaders = {
+        name: "Process",
+        priority: "Priority",
+        arrival_time: "Arrival Time (ms)",
+        cpu_burst_1: "CPU Burst 1 (ms)",
+        io_burst_1: "I/O Burst 1 (ms)",
+        cpu_burst_2: "CPU Burst 2 (ms)",
+        io_burst_2: "I/O Burst 2 (ms)",
+        cpu_burst_3: "CPU Burst 3 (ms)"
+      };
+
+      // Header row
+      let headerRow = "<tr>" + columns.map(col => `<th>${columnHeaders[col]}</th>`).join("") + "</tr>";
+      table.innerHTML = headerRow;
+
+      // Data rows
+      selected.processes.forEach(proc => {
+        let row = "<tr>";
+        columns.forEach(col => {
+          row += `<td>${proc[col] !== undefined ? proc[col] : "-"}</td>`;
+        });
+        row += "</tr>";
+        table.innerHTML += row;
+      });
+
+    } else if (selected.type === "without_io") {
+      const columns = ["name", "priority", "arrival", "burst"];
+      const columnHeaders = {
+        name: "Process",
+        priority: "Priority",
+        arrival: "Arrival Time (ms)",
+        burst: "CPU Burst (ms)"
+      };
+
+      // Header row
+      let headerRow = "<tr>" + columns.map(col => `<th>${columnHeaders[col]}</th>`).join("") + "</tr>";
+      table.innerHTML = headerRow;
+
+      // Data rows
+      selected.processes.forEach(proc => {
+        let row = "<tr>";
+        columns.forEach(col => {
+          row += `<td>${proc[col] !== undefined ? proc[col] : "-"}</td>`;
+        });
+        row += "</tr>";
+        table.innerHTML += row;
+      });
+    }
+
+    const totalCells = 51;
+
+    function createCells(container) {
+        for (let i = 0; i < totalCells; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.innerText = i;
+        container.appendChild(cell);
+        }
+    }
+
+    const statusClassMap = {
+        not_arrived: 'status-not-initialized',
+        exited: 'status-not-initialized',
+        ready: 'status-ready',
+        running: 'status-running',
+        blocked: 'status-blocked'
+    };
+
+    function showMetricsFromData(answer) {
+        if (selected.type !== 'without_io') return;
+
+        document.getElementById('avgWait').textContent = answer.avg_waiting;        
+        document.getElementById('avgTurnaround').textContent = answer.avg_turnaround;
+    }
+
+    function getGridByProcessName(procName) {
+        const labels = document.querySelectorAll('.task-label');
+        for (let label of labels) {
+        if (label.textContent.trim() === procName) {
+            return label.parentElement.querySelector('.task-grid');
+        }
+        }
+        return null;
+      }
+
+    function updateMetricsVisibility() {
+      const metricsBox = document.getElementById('metricsDisplay');
+      if (selected.type === 'without_io') {
+        metricsBox.style.display = 'block';
+      } else {
+        metricsBox.style.display = 'none';
+      }
+    }
+      
+    function resetView() {
+      clearHintCells();
+      clearCpuAnswerCells();
+
+      document.getElementById('hintSection').classList.add('hidden');
+      document.getElementById('answerSection').classList.add('hidden');
+
+      document.getElementById('checkResult').textContent = '';
+      document.getElementById('avgWait').textContent = '';      
+      document.getElementById('avgTurnaround').textContent = '';
+    }
+
+    function clearHintCells() {
+      document.querySelectorAll('#hintSection .task-grid .cell').forEach(cell => {
+        cell.className = 'cell';
+      });
+    }
+
+    function clearCpuAnswerCells() {
+      document.querySelectorAll('#cpuGridRight .cell').forEach(cell => {
+        cell.className = 'cell';
+      });
+    }
+
+    function renderHintProcessStatuses(answer) {
+      if (!answer.process_statuses) return;
+
+      // Reset all hint cells
+      document.querySelectorAll('#hintSection .task-grid .cell').forEach(cell => {
+        cell.className = 'cell';
+      });
+
+      Object.entries(answer.process_statuses).forEach(([procName, statusStr]) => {
+        const statuses = statusStr.split(',');
+        const grid = getGridByProcessName(procName);
+        if (!grid) return;
+
+        Array.from(grid.children).forEach((cell, i) => {
+          const status = statuses[i] || 'not_arrived';
+          const cls = statusClassMap[status];
+          if (cls) {
+            cell.classList.add(cls);
+          } else {
+            cell.className = 'cell';
+          }
+        });
+      });
+    }
+
+    function renderCpuAnswer(answer) {
+      if (!answer.cpu_timeline) return;
+
+      const timeline = answer.cpu_timeline.split(',');
+      const cpuGrid = document.getElementById('cpuGridRight');
+
+      Array.from(cpuGrid.children).forEach((cell, i) => {
+        cell.className = 'cell';
+        const name = timeline[i] || '';
+        switch (name) {
+          case 'P1':
+            cell.classList.add('bucket-p1');
+            break;
+          case 'P2':
+            cell.classList.add('bucket-p2');
+            break;
+          case 'P3':
+            cell.classList.add('bucket-p3');
+            break;
+          case 'idle':
+          case '':
+            cell.classList.add('bucket-idle');
+            break;
+        }
+      });
+    }
+
+    // Init cells
+    createCells(document.getElementById('cpuGridLeft'));
+    createCells(document.getElementById('cpuGridRight'));
+    document.querySelectorAll('#hintSection .task-grid').forEach(createCells);
+
+    // Handle algorithm selection (radio buttons)
+    document.querySelectorAll('input[name="algo"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        selectedAlgo = radio.value;
+        resetView(); // full reset
+      });
+    });
+
+    // Buttons
+
+    // New question
+    document.getElementById('resetPageBtn').addEventListener('click', () => {
+      window.location.reload(); // same as F5
+    });
+
+    // Hint
+    document.getElementById('toggleHintBtn').addEventListener('click', () => {
+      const hintSection = document.getElementById('hintSection');
+      const isHidden = hintSection.classList.contains('hidden');
+
+      if (isHidden) {
+        clearHintCells(); 
+        hintSection.classList.remove('hidden');
+        const answer = selected[`answer_${selectedAlgo}`];
+        renderHintProcessStatuses(answer);
+      } else {
+        hintSection.classList.add('hidden');
+      }
+    });
+
+    // answer
+    document.getElementById('showAnswerBtn').addEventListener('click', () => {
+      clearCpuAnswerCells(); // only clear CPU answer
+      document.getElementById('answerSection').classList.remove('hidden');
+      const answer = selected[`answer_${selectedAlgo}`];
+      showMetricsFromData(answer);
+      renderCpuAnswer(answer);
+    });
+
+    // paint bucket
+    let selectedBucketClass = null;
+    let selectedBucketLabel = null;
+
+    document.querySelectorAll('#paintBuckets .bucket').forEach(bucket => {
+      bucket.addEventListener('click', () => {
+        document.querySelectorAll('#paintBuckets .bucket').forEach(b => b.classList.remove('selected'));
+        bucket.classList.add('selected');
+        selectedBucketClass = [...bucket.classList].find(cls => cls.startsWith('bucket-'));
+        selectedBucketLabel = bucket.dataset.label;
+      });
+    });
+
+    document.querySelectorAll('#cpuGridLeft .cell').forEach(cell => {
+      cell.addEventListener('click', () => {
+        if (!selectedBucketClass) return;
+        cell.classList.remove('bucket-p1', 'bucket-p2', 'bucket-p3', 'bucket-idle');
+        cell.classList.add(selectedBucketClass);
+      });
+    });
+
+    document.getElementById('checkAnswerBtn').addEventListener('click', () => {
+      const userCells = document.querySelectorAll('#cpuGridLeft .cell');
+      const answer = selected[`answer_${selectedAlgo}`];
+      const timeline = answer.cpu_timeline?.split(',') || [];
+      const resultDisplay = document.getElementById('checkResult');
+
+      for (let i = 0; i < userCells.length; i++) {
+        const userClass = getPaintClass(userCells[i]);
+        const expectedClass = getExpectedBucketClass(timeline[i]);
+
+        if (userClass !== expectedClass) {
+          resultDisplay.textContent = `🐞 Beetle missed a beat at time ${i}!`;
+          resultDisplay.style.color = 'red';
+          return;
+        }
+      }
+
+      resultDisplay.textContent = '🪲 All beetles danced to the perfect tune!';
+      resultDisplay.style.color = 'green';
+    });
+
+    function getExpectedBucketClass(procName) {
+      switch (procName) {
+        case 'P1': return 'bucket-p1';
+        case 'P2': return 'bucket-p2';
+        case 'P3': return 'bucket-p3';
+        case 'idle':
+        case '':
+        default: return 'bucket-idle';
+      }
+    }
+
+    function getPaintClass(cell) {
+      const cls = [...cell.classList].find(c => c.startsWith('bucket-'));
+      return cls || 'bucket-idle';
+    }
+
+    // On reload
+    updateMetricsVisibility();
+
+
+    function attachTooltip(selector, tooltipKey) {
+      document.querySelectorAll(selector).forEach(elem => {
+        elem.addEventListener('mouseenter', e => tooltip.show(tooltipContent[tooltipKey], e));
+        elem.addEventListener('mousemove', e => tooltip.move(e));
+        elem.addEventListener('mouseleave', e => tooltip.hide());
+      });
+    }
+
+    // For paint buckets
+    attachTooltip('.bucket-p1', 'bucket-p1');
+    attachTooltip('.bucket-p2', 'bucket-p2');
+    attachTooltip('.bucket-p3', 'bucket-p3');
+    attachTooltip('.bucket-idle', 'bucket-idle');
+
+    // For legend items
+    attachTooltip('.status-not-initialized', 'status-not-initialized');
+    attachTooltip('.status-ready', 'status-ready');
+    attachTooltip('.status-running', 'status-running');
+    attachTooltip('.status-blocked', 'status-blocked');
+
+    // For algo radio buttons
+    document.querySelectorAll('.algo-selector input[type="radio"]').forEach(input => {
+      let algo = input.value;
+      let label = input.closest('label');
+      if (label && tooltipContent['algo-' + algo]) {
+        label.addEventListener('mouseenter', e => tooltip.show(tooltipContent['algo-' + algo], e));
+        label.addEventListener('mousemove', e => tooltip.move(e));
+        label.addEventListener('mouseleave', e => tooltip.hide());
+      }
+    });
+
+    // For buttons
+    attachTooltip('#checkAnswerBtn', 'checkAnswerBtn');
+    attachTooltip('#toggleHintBtn', 'toggleHintBtn');
+    attachTooltip('#showAnswerBtn', 'showAnswerBtn');
+    attachTooltip('#resetPageBtn', 'resetPageBtn');
+    attachTooltip('.metrics-box', 'metrics-box');
+
+
+
+  </script>
+
+</body>
+</html>
