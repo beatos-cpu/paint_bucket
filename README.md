@@ -2,6 +2,10 @@
 
 Welcome to **BeatOS** — a playful, paint-bucket-style interface for practicing CPU scheduling algorithms. This tool combines music-inspired visuals, accessibility awareness, and compact layout design to help you prepare for your final exam (and have some fun while doing it 🐞🎶).
 
+
+<img width="1366" height="768" alt="screenshot" src="https://github.com/user-attachments/assets/d675ed74-7fd1-46c3-8cf2-91ca4caa02db" />
+
+
 ##  1. Theming: BeatOS + CPU Scheduling
 
 - New text and labels reflect the **BeatOS theme**, inspired by music and beetles.
